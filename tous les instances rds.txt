@@ -1,0 +1,34 @@
+import boto3
+import json
+
+
+def lambda_handler(event, context):
+    rds_client = boto3.client('rds', region_name='eu-west-3')
+    response = rds_client.describe_db_instances()
+    instances = []
+    for db_instance in response['DBInstances']:
+        instance_id = db_instance['DBInstanceIdentifier']
+        arn = db_instance['DBInstanceArn']
+        class_name = db_instance['DBInstanceClass']
+        engine = db_instance['Engine']
+        status = db_instance['DBInstanceStatus']
+        tag_list = db_instance.get('TagList', [])
+        ca_certificate_identifier = db_instance.get('CACertificateIdentifier', 'N/A')
+        db_name = db_instance.get('DBName', 'N/A')
+        storage_type = db_instance['StorageType']
+        allocated_storage = db_instance['AllocatedStorage']
+        
+        instance = {
+            'CACertificateIdentifier': ca_certificate_identifier,
+            'DBInstanceArn': arn,
+            'TagList': tag_list,
+            'DBInstanceIdentifier': instance_id,
+            'DBInstanceClass': class_name,
+            'Engine': engine,
+            'DBName': db_name,
+            'Status': status,
+            'StorageType': storage_type,
+            'AllocatedStorage': allocated_storage
+        }
+        instances.append(instance)
+    return json.loads(json.dumps(instances))
