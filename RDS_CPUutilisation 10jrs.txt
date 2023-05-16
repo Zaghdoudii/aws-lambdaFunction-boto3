@@ -1,0 +1,67 @@
+import boto3
+import datetime
+
+
+def lambda_handler(event, context):
+    rds_client = boto3.client('rds', region_name='eu-west-3')
+    cloudwatch_client = boto3.client('cloudwatch', region_name='eu-west-3')
+    
+    instances = rds_client.describe_db_instances()
+    cpu_usage = {}
+    
+    for instance in instances['DBInstances']:
+        instance_id = instance['DBInstanceIdentifier']
+        end_time = datetime.datetime.utcnow()
+        start_time = end_time - datetime.timedelta(days=10)
+        
+        response = cloudwatch_client.get_metric_data(
+            MetricDataQueries=[
+                {
+                    'Id': 'cpuUtilization',
+                    'MetricStat': {
+                        'Metric': {
+                            'Namespace': 'AWS/RDS',
+                            'MetricName': 'CPUUtilization',
+                            'Dimensions': [
+                                {
+                                    'Name': 'DBInstanceIdentifier',
+                                    'Value': instance_id
+                                }
+                            ]
+                        },
+                        'Period': 86400,
+                        'Stat': 'Average'
+                    },
+                    'ReturnData': True
+                },
+                {
+                    'Id': 'cpuUtilizationMax',
+                    'MetricStat': {
+                        'Metric': {
+                            'Namespace': 'AWS/RDS',
+                            'MetricName': 'CPUUtilization',
+                            'Dimensions': [
+                                {
+                                    'Name': 'DBInstanceIdentifier',
+                                    'Value': instance_id
+                                }
+                            ]
+                        },
+                        'Period': 86400,
+                        'Stat': 'Maximum'
+                    },
+                    'ReturnData': True
+                }
+            ],
+            StartTime=start_time,
+            EndTime=end_time
+        )
+        
+        daily_cpu_usage = []
+        for i, (average_value, max_value) in enumerate(zip(response['MetricDataResults'][0]['Values'], response['MetricDataResults'][1]['Values'])):
+            timestamp = start_time + datetime.timedelta(days=i)
+            daily_cpu_usage.append({'date': timestamp.strftime('%Y-%m-%d'), 'average_cpu_usage': average_value, 'max_cpu_usage': max_value})
+        
+        cpu_usage[instance_id] = daily_cpu_usage
+    
+    return cpu_usage
