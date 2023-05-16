@@ -1,0 +1,47 @@
+import boto3
+
+
+def lambda_handler(event, context):
+    s3 = boto3.client('s3', region_name='eu-west-3')
+    
+    # Get a list of all buckets in the account
+    bucket_list = s3.list_buckets()['Buckets']
+    
+    # Create a list to store the bucket information
+    bucket_info = []
+    
+    # Iterate over the buckets and calculate the cost for each one
+    for bucket in bucket_list:
+        bucket_name = bucket['Name']
+        
+        # Get the creation time of the bucket
+        creation_time = bucket['CreationDate'].isoformat()
+        
+        # Get the list of objects in the bucket
+        response = s3.list_objects_v2(Bucket=bucket_name)
+        
+        # Check if the 'Contents' key is present in the response
+        if 'Contents' in response:
+            # Calculate the cost and size for the bucket
+            total_size = sum([obj['Size'] for obj in response['Contents']])
+            cost_per_gb_month = 0.023
+            cost = (total_size / (1024 ** 3)) * cost_per_gb_month
+            bucket_objects = len(response['Contents'])
+            # Append the bucket information to the list
+            bucket_info.append({
+                'name': bucket_name,
+                'created': creation_time,
+                'cost': cost,
+                'size': total_size,
+                'objects': bucket_objects
+            })
+        else:
+            # If there are no objects in the bucket, set the cost and size to zero
+            bucket_info.append({
+                'name': bucket_name,
+                'created': creation_time,
+                'cost': 0,
+                'size': 0,
+                'objects': 0
+            })
+    return bucket_info
