@@ -1,0 +1,45 @@
+import boto3
+import json
+from datetime import datetime, timedelta
+
+
+def lambda_handler(event, context):
+    ce = boto3.client('ce', region_name='eu-west-3')
+    
+    end_date = datetime.now().date().isoformat()
+    start_date = (datetime.now() - timedelta(days=30)).date().isoformat()
+    
+    response = ce.get_cost_and_usage(
+        TimePeriod={
+            'Start': start_date,
+            'End': end_date
+        },
+        Granularity='MONTHLY',
+        Filter={
+            'And': [
+                {
+                    'Dimensions': {
+                        'Key': 'SERVICE',
+                        'Values': ['Amazon Relational Database Service']
+                    }
+                },
+                {
+                    'Dimensions': {
+                        'Key': 'USAGE_TYPE_GROUP',
+                        'Values': ['RDS: Running Hours']
+                    }
+                }
+            ]
+        },
+        Metrics=['UnblendedCost', 'UsageQuantity']
+    )
+    
+    cost = response['ResultsByTime'][0]['Total']['UnblendedCost']['Amount']
+    usage = response['ResultsByTime'][0]['Total']['UsageQuantity']['Amount']
+    cost = round(float(cost), 2)
+    usage = round(float(usage), 2)
+    
+    return {
+        'statusCode': 200,
+        'body': json.loads(json.dumps({'Total RDS Cost': cost, 'Total RDS Running Hours': usage}))
+    }
