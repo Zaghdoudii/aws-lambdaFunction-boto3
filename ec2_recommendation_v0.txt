@@ -110,10 +110,12 @@ def get_recommendations(os_type, vcpu, monthly_cost, instance_type):
         json_content = response['Body'].read().decode('utf-8')
         data = json.loads(json_content)
         initial_cost = 0
+#----------------mochkla -----------------------------------------
         for element in data:
             if element.get("Instance type") == instance_type:
                 initial_cost = element.get("Cost ($/h)")
-        
+#----------------mochkla -----------------------------------------
+
         for element in data:
             if element.get("CPU") < vcpu and element.get("Cost ($/h)")!= 'N/A':
                 dic = {

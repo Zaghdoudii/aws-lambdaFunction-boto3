@@ -1,0 +1,67 @@
+import boto3
+import datetime
+
+
+def lambda_handler(event, context):
+    rds_client = boto3.client('rds', region_name='eu-west-3')
+    cloudwatch_client = boto3.client('cloudwatch', region_name='eu-west-3')
+    
+    instances = rds_client.describe_db_instances()
+    memory_usage = {}
+    
+    for instance in instances['DBInstances']:
+        instance_id = instance['DBInstanceIdentifier']
+        end_time = datetime.datetime.utcnow()
+        start_time = end_time - datetime.timedelta(days=10)
+        
+        response = cloudwatch_client.get_metric_data(
+            MetricDataQueries=[
+                {
+                    'Id': 'freeableMemory',
+                    'MetricStat': {
+                        'Metric': {
+                            'Namespace': 'AWS/RDS',
+                            'MetricName': 'FreeableMemory',
+                            'Dimensions': [
+                                {
+                                    'Name': 'DBInstanceIdentifier',
+                                    'Value': instance_id
+                                }
+                            ]
+                        },
+                        'Period': 86400,
+                        'Stat': 'Average'
+                    },
+                    'ReturnData': True
+                },
+                {
+                    'Id': 'maxMemory',
+                    'MetricStat': {
+                        'Metric': {
+                            'Namespace': 'AWS/RDS',
+                            'MetricName': 'FreeableMemory',
+                            'Dimensions': [
+                                {
+                                    'Name': 'DBInstanceIdentifier',
+                                    'Value': instance_id
+                                }
+                            ]
+                        },
+                        'Period': 86400,
+                        'Stat': 'Maximum'
+                    },
+                    'ReturnData': True
+                }
+            ],
+            StartTime=start_time,
+            EndTime=end_time
+        )
+        
+        daily_memory_usage = []
+        for i, (average_value, max_value) in enumerate(zip(response['MetricDataResults'][0]['Values'], response['MetricDataResults'][1]['Values'])):
+            timestamp = start_time + datetime.timedelta(days=i)
+            daily_memory_usage.append({'date': timestamp.strftime('%Y-%m-%d'), 'average_freeable_memory': average_value/1073741824, 'max_freeable_memory': max_value/1073741824})
+        
+        memory_usage[instance_id] = daily_memory_usage
+    
+    return memory_usage
