@@ -5,11 +5,7 @@ import boto3
 AWS_REGION = 'eu-west-3'
 AWS_ACCESS_KEY = 'AKIA3VX54KIZPNJAUEPZ'
 AWS_SECRET_KEY = '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'
-session = boto3.Session(
-    region_name=AWS_REGION,
-    aws_access_key_id=AWS_ACCESS_KEY,
-    aws_secret_access_key=AWS_SECRET_KEY
-)
+session = boto3.Session(region_name=AWS_REGION, aws_access_key_id=AWS_ACCESS_KEY, aws_secret_access_key=AWS_SECRET_KEY)
 
 
 class MyEncoder(json.JSONEncoder):
@@ -19,8 +15,9 @@ class MyEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
+# Récupérer la moyenne d'utilisation du CPU d'une seule instance EC2 les derniers 30 jours
 def get_cpu_utilization(instance_id):
-    cloudwatch = boto3.client('cloudwatch', region_name='eu-west-3')
+    cloudwatch = boto3.client('cloudwatch', region_name=AWS_REGION)
     total_cpu = 0
     for i in range(30):
         start_time = datetime.utcnow() - timedelta(days=30 - i)
@@ -49,10 +46,10 @@ def get_cpu_utilization(instance_id):
         return total_cpu / 30
 
 
+# Récupérer tous les instances EC2 dans mon compte
 def get_EC2_instances():
-    ec2_eu_west = boto3.client('ec2', region_name='eu-west-3')
-    ce = boto3.client('ce')
-    
+    ec2_eu_west = boto3.client('ec2', region_name=AWS_REGION)
+    ce = boto3.client('ce', region_name=AWS_REGION)
     instances = []
     
     response_eu_west = ec2_eu_west.describe_instances()
@@ -69,7 +66,7 @@ def get_EC2_instances():
                                 'vCPU': instance['CpuOptions']['CoreCount'] * instance['CpuOptions']['ThreadsPerCore'],
                                 'OS': instance['Platform'] if 'Platform' in instance else 'Linux/UNIX',
                                 'average_cpu': get_cpu_utilization(instance['InstanceId'])}
-            # Récupérer le coût de l'instance d'un mois
+            # Récupérer le coût de l'instance du dernier mois
             cost_response = ce.get_cost_and_usage(
                 TimePeriod={
                     'Start': (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'),
@@ -89,7 +86,6 @@ def get_EC2_instances():
                 }
             )
             instance_details['Cost'] = cost_response['ResultsByTime'][0]['Total']['AmortizedCost']['Amount']
-            
             instances.append(instance_details)
     
     return json.loads(json.dumps(instances, cls=MyEncoder))
@@ -110,18 +106,19 @@ def get_recommendations(os_type, vcpu, monthly_cost, instance_type):
         json_content = response['Body'].read().decode('utf-8')
         data = json.loads(json_content)
         initial_cost = 0
-#----------------mochkla -----------------------------------------
+        # ----------------mochkla -----------------------------------------
         for element in data:
-            if element.get("Instance type") == instance_type:
-                initial_cost = element.get("Cost ($/h)")
-#----------------mochkla -----------------------------------------
-
+            if element["Instance type"] == instance_type:
+                initial_cost = element["Cost ($/h)"]
+        # ----------------mochkla -----------------------------------------
+        
         for element in data:
-            if element.get("CPU") < vcpu and element.get("Cost ($/h)")!= 'N/A':
+            if element.get("CPU") < vcpu and element.get("Cost ($/h)") != 'N/A':
                 dic = {
                     'Recommendation_Type': element.get("Instance type"),
                     'Recommendation_saving_cost': get_cost_saving(element.get("Cost ($/h)"), float(initial_cost)),
-                    'Recommendation_cost': float(monthly_cost) * get_cost_saving(float(element.get("Cost ($/h)")), float(initial_cost))
+                    'Recommendation_cost': float(monthly_cost) * get_cost_saving(float(element.get("Cost ($/h)")),
+                                                                                 float(initial_cost))
                 }
                 rec.append(dic)
     else:
@@ -134,11 +131,12 @@ def get_recommendations(os_type, vcpu, monthly_cost, instance_type):
                 initial_cost = element.get("Cost ($/h)")
         
         for element in data:
-            if element.get("CPU") < vcpu and element.get("Cost ($/h)")!= 'N/A':
+            if element.get("CPU") < vcpu and element.get("Cost ($/h)") != 'N/A':
                 dic = {
                     'Recommendation_Type': element.get("Instance type"),
                     'Recommendation_saving_cost': get_cost_saving(element.get("Cost ($/h)"), float(initial_cost)),
-                    'Recommendation_cost': float(monthly_cost) * get_cost_saving(float(element.get("Cost ($/h)")), float(initial_cost))
+                    'Recommendation_cost': float(monthly_cost) * get_cost_saving(float(element.get("Cost ($/h)")),
+                                                                                 float(initial_cost))
                 }
                 rec.append(dic)
     return rec
@@ -150,9 +148,10 @@ def lambda_handler(event, context):
     for element in data:
         if element.get("vCPU") == 1:
             instance_id = element.get("InstanceId")
-            dicc[instance_id] = "No recommendation"
-        elif element.get("vCPU") > 1 and element.get("average_cpu") < 40 and float(element.get("Cost"))>0:
+            dicc[instance_id] = []
+        elif element.get("vCPU") > 1 and element.get("average_cpu") < 40 and float(element.get("Cost")) > 0:
             instance_id = element.get("InstanceId")
-            dicc[instance_id] = get_recommendations(element.get("OS"),element.get("vCPU"), element.get("Cost"), element.get("InstanceType"))
+            dicc[instance_id] = get_recommendations(element.get("OS"), element.get("vCPU"), element.get("Cost"),
+                                                    element.get("InstanceType"))
     
     return dicc
