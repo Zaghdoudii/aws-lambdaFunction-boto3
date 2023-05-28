@@ -1,0 +1,31 @@
+import boto3
+
+role_arn = "arn:aws:iam::802617578034:role/role-talan-lambda-finops"
+
+def assumed_role_session_s3(role_arn: str):
+
+# Create an STS client object that represents a live connection to the STS service
+    sts_client = boto3.client('sts')
+    logger.info("assumed_role_session_s3: %s" % role_arn)
+
+# Call the assume_role method of the STSConnection object and pass the role ARN and a role session name.
+    assumed_role_object = sts_client.assume_role(
+        RoleArn=role_arn,
+        RoleSessionName="AssumeRoleDataPush"
+    )
+
+# From the response that contains the assumed role, get the temporary credentials that can be used to make subsequent API calls
+    credentials = assumed_role_object['Credentials']
+    logger.info("credentials: %s" % credentials)
+
+# Use the temporary credentials that AssumeRole returns to make a connection to Amazon S3
+    s3_resource = boto3.client('s3',
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+
+    return s3_resource
+
+
+# Cette fonction permet de créer une session temporaire avec des permissions d'accès à Amazon S3 en utilisant un rôle AWS donné.
