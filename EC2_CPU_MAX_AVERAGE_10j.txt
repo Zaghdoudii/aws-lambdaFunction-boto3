@@ -1,0 +1,70 @@
+import boto3
+import json
+from datetime import datetime, timedelta
+
+
+def get_cpu_utilization(instance_id):
+    cloudwatch = boto3.client('cloudwatch', region_name='eu-west-3')
+    cpu_utilization = {}
+    for i in range(10):
+        start_time = datetime.utcnow() - timedelta(days=10 - i)
+        end_time = datetime.utcnow() - timedelta(days=9 - i)
+        response = cloudwatch.get_metric_statistics(
+            Namespace='AWS/EC2',
+            MetricName='CPUUtilization',
+            Dimensions=[
+                {
+                    'Name': 'InstanceId',
+                    'Value': instance_id
+                },
+            ],
+            StartTime=start_time,
+            EndTime=end_time,
+            Period=60 * 60 * 24,
+            Statistics=['Average', 'Maximum'],  # Add 'Maximum' to retrieve maximum utilization
+            Unit='Percent'
+        )
+        datapoints = response['Datapoints']
+        if datapoints:
+            average_cpu = datapoints[-1]['Average']
+            maximum_cpu = datapoints[-1]['Maximum']  # Retrieve the maximum utilization
+            cpu_utilization[start_time.strftime('%Y-%m-%d')] = {
+                'average': average_cpu,
+                'maximum': maximum_cpu
+            }
+        else:
+            cpu_utilization[start_time.strftime('%Y-%m-%d')] = {
+                'average': 'No data',
+                'maximum': 'No data'
+            }
+    return cpu_utilization
+
+
+instances_ID = []
+instances_cpu_utilization = {}
+ec2_eu_west = boto3.client('ec2', region_name='eu-west-3')
+response_eu_west = ec2_eu_west.describe_instances()
+for reservation in response_eu_west["Reservations"]:
+    for instance in reservation["Instances"]:
+        instance_id = instance['InstanceId']
+        instances_ID.append(instance_id)
+        instances_cpu_utilization[instance_id] = {
+            'name': instance['Tags'][0]['Value'],
+            'utilization': get_cpu_utilization(instance_id)
+        }
+
+
+def lambda_handler(event, context):
+    cpu_utilization_data = {}
+    for instance_id, instance_data in instances_cpu_utilization.items():
+        utilization = instance_data['utilization']
+        cpu_utilization_list = []
+        for date, cpu_metrics in utilization.items():
+            cpu_utilization_list.append({
+                'date': date,
+                'average_cpu_usage': cpu_metrics['average'],
+                'maximum_cpu_usage': cpu_metrics['maximum']
+            })
+        cpu_utilization_data[instance_id] = cpu_utilization_list
+    
+    return json.loads(json.dumps(cpu_utilization_data))
